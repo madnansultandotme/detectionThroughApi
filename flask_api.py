@@ -7,6 +7,10 @@ import pickle
 import tensorflow as tf
 
 app = Flask(__name__)
+#Test endpoint
+@app.route('/test', methods=['GET'])
+def test():
+    return jsonify({'message': 'API is working'}), 200
 
 # Initialize Mediapipe face detection
 mp_face_detection = mp.solutions.face_detection
@@ -77,20 +81,28 @@ def encode_face(frame):
 def add_user():
     # Get the user name from the request
     user_name = request.form['name']
-    file = request.files['file'].read()
-    npimg = np.frombuffer(file, np.uint8)
-    frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
+    files = request.files.getlist('file')
 
-    # Encode the face
-    encoding = encode_face(frame)
+    encodings = []
+    for file in files:
+        npimg = np.frombuffer(file.read(), np.uint8)
+        frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
 
-    if encoding is not None:
-        # Save the encoding with the user name
+        # Encode the face
+        encoding = encode_face(frame)
+        if encoding is not None:
+            encodings.append(encoding)
+
+    if encodings:
+        # Average the encodings
+        average_encoding = np.mean(encodings, axis=0)
+
+        # Save the average encoding with the user name
         with open(f"{ENCODINGS_DIR}/{user_name}.pkl", 'wb') as f:
-            pickle.dump(encoding, f)
+            pickle.dump(average_encoding, f)
         return jsonify({'message': f'User {user_name} added successfully!'}), 200
     else:
-        return jsonify({'message': 'No face detected in the image.'}), 400
+        return jsonify({'message': 'No face detected in the images.'}), 400
 
 @app.route('/recognize', methods=['POST'])
 def recognize():
@@ -119,7 +131,7 @@ def recognize():
     distances = np.linalg.norm(known_encodings - encoding, axis=1)
     print(f"Distances: {distances}")
     min_distance = np.min(distances)
-    threshold = 0.6  # Set an appropriate threshold for your model
+    threshold = 0.7  # Set an appropriate threshold for your model
     name = "Unknown"
 
     if min_distance < threshold:
@@ -130,4 +142,6 @@ def recognize():
     return jsonify({'name': name}), 200
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(
+        host='0.0.0.0',port=5000,
+        debug=True)
